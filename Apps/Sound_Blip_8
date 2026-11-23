@@ -11,7 +11,7 @@ Has some settings to play around with tempo, sounds, and pitch.
 <style>
 :root{--bg:#0f1424;--card:#171d33;--well:#0b0f1d;--line:#2b3556;--ink:#e8ecfa;--dim:#8d99c0;--amber:#ffb23e;--cyan:#53d8fb;--pink:#ff5fa2}
 *{box-sizing:border-box}
-html{background:var(--bg)}
+html{background:var(--bg);overflow-anchor:none}
 body{margin:0;color:var(--ink);font:18px/1.25 'Share Tech Mono',ui-monospace,monospace;padding:32px 16px 56px;
   background:linear-gradient(var(--bg),var(--bg))}
 main{max-width:1020px;margin:0 auto}
@@ -23,14 +23,16 @@ header p{margin:8px 0 28px;color:var(--dim);max-width:60ch}
 section{background:var(--card);border:2px solid var(--line);padding:20px;position:relative}
 section::before{content:"";position:absolute;left:-2px;top:-2px;width:36px;height:6px;background:var(--c,var(--amber))}
 #sfx{--c:var(--amber)} #mus{--c:var(--cyan)}
-.top{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:14px}
+.top{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:14px;height:2.5em;min-height:2.5em}
+.top h2{flex:0 0 auto;white-space:nowrap}
+.top .tag{flex:1 1 auto;min-width:0;height:2.5em;line-height:2.5em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 h2{margin:0;font-size:18px;font-weight:700}
 .tag{color:var(--dim);font-size:16px;text-align:right}
 canvas{display:block;width:100%;height:92px;background:var(--well);border:2px solid var(--line);image-rendering:pixelated;margin-bottom:12px}
 .row{display:flex;gap:10px;margin-bottom:16px}
 button{font-size:14px;color:var(--ink);background:transparent;border:2px solid var(--line);padding:10px 12px;cursor:pointer;letter-spacing:.5px}
 button:hover{border-color:var(--dim)}
-button:active{transform:translateY(2px)}
+button:active{transform:none;filter:brightness(.94)}
 button.play{flex:1;background:var(--c);border-color:var(--c);color:#10142a;font-weight:700;font-size:16px}
 button.play:hover{filter:brightness(1.1)}
 button.dl{width:100%;margin-top:18px;border-color:var(--c);color:var(--c)}
@@ -43,9 +45,9 @@ input[type=text]{width:100%;background:var(--well);color:var(--ink);border:2px s
 .hint{margin:5px 0 0;color:var(--dim);font-size:14px}
 .ctl{display:grid;grid-template-columns:1fr 1fr;gap:14px 18px}
 .f.w{grid-column:1/-1}
-.lb{display:flex;justify-content:space-between;margin-bottom:3px}
+.lb{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:22px;margin-bottom:3px;white-space:nowrap}
 .lb span{font-size:11px}
-output{color:var(--c);font-size:16px}
+output{display:block;flex:0 0 7ch;min-width:7ch;color:var(--c);font-size:16px;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
 select{width:100%;font:inherit;background:var(--well);color:var(--ink);border:2px solid var(--line);padding:6px}
 .seg{display:flex;flex-wrap:wrap;gap:4px}
 .seg button{flex:1;min-width:0;padding:7px 4px;font-size:11px;border-width:2px}
@@ -122,9 +124,21 @@ function link(seedId,ids,defs,run,live,o={}){
   const el=$('#'+seedId),ctl=el.closest('section').querySelector('.ctl');
   const enc=()=>ids.map(i=>$('#'+i).value).join('.');
   const write=()=>el.value=baseOf(seedId)+'~'+enc();
-  ctl.addEventListener('input',e=>{if(ids.includes(e.target.id)){write();if(live)run()}});
-  ctl.addEventListener('change',e=>{if(!live&&ids.includes(e.target.id))run()});
+  let runTimer=0;
+  ctl.addEventListener('input',e=>{
+    if(!ids.includes(e.target.id))return;
+    write();
+    if(live)run();
+    else if(o.liveDelay){clearTimeout(runTimer);runTimer=setTimeout(()=>{runTimer=0;run()},o.liveDelay)}
+  });
+  ctl.addEventListener('change',e=>{
+    if(!live&&ids.includes(e.target.id)){
+      if(runTimer){clearTimeout(runTimer);runTimer=0}
+      run();
+    }
+  });
   el.addEventListener('change',()=>{
+    if(runTimer){clearTimeout(runTimer);runTimer=0}
     const sp=el.value.split('~'),p=(sp[1]||'').split('.'),bare=o.roll&&sp.length<2,keep=!o.roll&&o.norm&&sp.length<2;
     if(o.norm)el.value=o.norm(sp[0]);
     if(bare)o.roll(el.value);
@@ -133,7 +147,7 @@ function link(seedId,ids,defs,run,live,o={}){
   });
   if(o.roll)o.roll(baseOf(seedId));
   write();
-  return()=>{const b=(o.rnd||rand)();if(o.roll)o.roll(b);el.value=b+'~'+enc();run(true)};
+  return()=>{if(runTimer){clearTimeout(runTimer);runTimer=0}const b=(o.rnd||rand)();if(o.roll)o.roll(b);el.value=b+'~'+enc();run(true)};
 }
 function draw(cv,d){
   const c=cv.getContext('2d'),W=cv.width,H=cv.height,k=Math.ceil(d.length/W);
@@ -328,7 +342,7 @@ const STY=[
 build($('#mctl'),[
   {id:'style',l:'Style',o:STY.map(x=>x.n)},
   {id:'mlen',l:'Length',a:15,b:60,v:30,f:x=>x+' s'},
-  {id:'voices',l:'Sounds in loop',a:1,b:100,v:16,f:x=>x},
+  {id:'voices',l:'Sound layers',a:1,b:100,v:16,f:x=>x},
   {id:'sect',l:'Sections',a:1,b:24,v:6,f:x=>x},
   {id:'tempo',l:'Tempo',a:50,b:200,s:5,v:120,f:x=>x+' bpm'},
   {id:'mpitch',l:'Pitch',a:-12,b:12,v:0,f:x=>sgn(x)+' st'},
@@ -436,24 +450,37 @@ function form(r,S){
   return f;
 }
 function makeForm(R,bars,want,A){
-  const r=R('f'),S=Math.max(1,Math.min(want||4+(r()*10|0),Math.max(4,bars>>1),24)),f=form(r,S),ns=f.map(()=>1),seen={};
+  // never more sections than bars allow (each section ≥2 bars)
+  const maxS=Math.max(1,Math.min(24,bars>>1));
+  const r=R('f'),S=Math.max(1,Math.min(want||4+(r()*10|0),maxS)),f=form(r,S),ns=f.map(()=>1),seen={};
   // ONE global progression that cycles — harmonic continuity across the loop seam
   const gProg=prog(r,A),altProg=prog(r,A);
-  for(let u=(bars>>1)-S;u>0;u--)ns[pick(r,f.flatMap((t,k)=>t==2?[k,k,k,k]:t==4||t==3?[k,k]:[k]))]++;
+  // distribute remaining bar-pairs without exceeding budget
+  let pairs=Math.max(0,(bars>>1)-S);
+  for(let u=pairs;u>0;u--)ns[pick(r,f.flatMap((t,k)=>t==2?[k,k,k,k]:t==4||t==3?[k,k]:[k]))]++;
   // force first & last section same length so loop phase matches
-  if(S>1){const share=Math.max(2,Math.min(ns[0],ns[S-1]));ns[0]=ns[S-1]=share}
+  if(S>1){const share=Math.max(1,Math.min(ns[0],ns[S-1]));ns[0]=ns[S-1]=share}
+  // scale down if we still overshoot
+  let total=ns.reduce((a,x)=>a+x,0);
+  while(total*2>bars&&total>S){
+    let i=0,best=0;for(let k=0;k<ns.length;k++)if(ns[k]>best){best=ns[k];i=k}
+    if(ns[i]>1){ns[i]--;total--}else break;
+  }
   let b0=0;
   const secs=f.map((t,k)=>{
-    const o=seen[t]=(seen[t]??-1)+1,n=ns[k]*2;
+    const o=seen[t]=(seen[t]??-1)+1,n=Math.max(2,ns[k]*2);
     const eBase=Math.max(.6,ENERGY[t]*(.9+r()*.18)+(t==2?.08:0)+(t==4?.05:0));
-    // mild section color only — melody evolves by absolute bar, not hard reset
     const mi=(t*2+o*3+(r()*3|0))|0;
     const tr=t==4?pick(r,[0,3,5,-2]):t==2&&o&&k>0&&k<S-1?pick(r,[0,0,2,-2]):0;
-    // sections share the global progression (alt only on bridge-like types)
     const pr=(t===3||t===5)?altProg:gProg;
     const c={t,n,b0,o,e:Math.min(1.1,eBase),mi,pr,tr};
     b0+=n;return c;
   });
+  // snap total to exact bar count
+  if(secs.length){
+    let used=secs.reduce((a,c)=>a+c.n,0);
+    secs[secs.length-1].n=Math.max(2,secs[secs.length-1].n+(bars-used));
+  }
   if(secs.length>1){
     secs[secs.length-1].e=secs[0].e;
     secs[secs.length-1].tr=secs[0].tr;
@@ -491,7 +518,7 @@ function pitched(X,L,c,bi,bar){
     if(!chordOnly&&rg()<.1)ln=Math.max(1,ln+(rg()<.5?1:-1));
     const dd=X.dur(bar,s,Math.min(ln,(hs[k+1]??hs[0]+16)-s)),vo=L.g*(s&3?.88:1)*(s===0?1.05:.95);
     let dg=cs;
-    if(L.pm==1)dg=[cs,cs+2,cs+4,cs+n][ao[(bar*16+s)%ao.length]];
+    if(L.pm==1)dg=[cs,cs+2,cs+4,cs+n,cs+n+2][ao[(bar*16+s)%ao.length]];
     else if(L.pm==2){
       if(chordOnly){dg=[cs,cs+2,cs+4][(s+bar)%3];}
       else{
@@ -534,13 +561,16 @@ function perc(X,L,c,bi,bar){
 function band(m,fc){
   const N=m.length,hp=1-6.2832*50/MS,lp=1-Math.exp(-6.2832*fc/MS);
   let px=0,py=0,l1=0,l2=0;
-  for(let i=-3000;i<N;i++){const x=m[(i+N)%N];py=hp*(py+x-px);px=x;l1+=lp*(py-l1);l2+=lp*(l1-l2);if(i>=0)m[i]=l2}
+  const pre=Math.min(1500,N);
+  for(let i=-pre;i<N;i++){const x=m[(i+N)%N];py=hp*(py+x-px);px=x;l1+=lp*(py-l1);l2+=lp*(l1-l2);if(i>=0)m[i]=l2}
 }
 // Small wrap-around reverb (8 combs + 4 allpasses): the tail wraps so the loop stays seamless
 function reverb(m,wet,fb){
   if(!wet)return;
   const N=m.length,cb=[810,862,927,984,1032,1082,1130,1173].map(n=>new Float32Array(n)),ab=[403,320,247,163].map(n=>new Float32Array(n)),cf=new Float32Array(8),cp=new Int32Array(8),ap=new Int32Array(4);
-  for(let i=-96000;i<N;i++){
+  // short pre-roll (~2x max delay) — old 96k pre-roll froze the UI on long tracks
+  const pre=2400;
+  for(let i=-pre;i<N;i++){
     const x=m[(i+N)%N]*.04;let y=0;
     for(let k=0;k<8;k++){const b=cb[k],p=cp[k],o=b[p];cf[k]=o*.65+cf[k]*.35;b[p]=x+cf[k]*fb;cp[k]=p+1==b.length?0:p+1;y+=o}
     for(let k=0;k<4;k++){const b=ab[k],p=ap[k],o=b[p];b[p]=y+o*.5;y=o-y;ap[k]=p+1==b.length?0:p+1}
@@ -549,8 +579,8 @@ function reverb(m,wet,fb){
 }
 function finish(X,nvc){
   const{m,d,kk,rec,st}=X,N=m.length;
-  // lighter sidechain ducking at high voice counts so rhythm stays punchy
-  const dp=.18+.1*Math.min(1,nvc/40),dk=new Float32Array(N).fill(1);
+  // Keep the drum-to-music balance stable as extra layers are added.
+  const dp=.22,dk=new Float32Array(N).fill(1);
   for(const t of kk){const s=t*MS|0;for(let j=0;j<rec;j++){const i=(s+j)%N,g=1-dp*(1-j/rec)**2;if(g<dk[i])dk[i]=g}}
   for(let i=0;i<N;i++)m[i]*=dk[i];
   reverb(m,st.rv,.78);
@@ -558,16 +588,14 @@ function finish(X,nvc){
   for(let i=0;i<N;i++)m[i]+=d[i];
   if(st.ns)for(let i=0;i<N;i++)m[i]+=(NR()-.5)*st.ns+(NR()<.0001?(NR()-.5)*.05:0);
   band(m,st.lp);
-  // consistent perceived loudness — do NOT crush high voice counts
-  let ss=0,pk=0;for(let i=0;i<N;i++){const a=Math.abs(m[i]);ss+=a*a;if(a>pk)pk=a}
-  const h=new Uint32Array(1024),sc=1023/(pk||1);for(let i=0;i<N;i++)h[Math.abs(m[i])*sc|0]++;
-  let c=0,b=0;for(;b<1023&&c<N*.994;b++)c+=h[b];
-  const rms=Math.sqrt(ss/N+1e-9),p99=(b+1)/sc;
-  const safety=nvc>40?1/Math.sqrt(1+(nvc-40)*.015):1;
-  const g=Math.min(3.5,.28/rms,.98/p99)*safety;
+  // Loudness is normalized once for the whole mix. Layer count changes
+  // the arrangement, not the master volume; a soft limiter catches peaks.
+  let ss=0;
+  for(let i=0;i<N;i++)ss+=m[i]*m[i];
+  const rms=Math.sqrt(ss/N+1e-9),g=Math.min(3.8,.24/rms);
   for(let i=0;i<N;i++){
     let x=m[i]*g,a=Math.abs(x);
-    if(a>.82)x=Math.sign(x)*(.82+.18*Math.tanh((a-.82)/.18));
+    if(a>.78)x=Math.sign(x)*(.78+.22*Math.tanh((a-.78)/.22));
     m[i]=x;
   }
   // seamless loop seam: remove DC, equal-power crossfade end→start
@@ -578,12 +606,18 @@ function finish(X,nvc){
     const t=(i+.5)/xf,fe=Math.cos(t*Math.PI*.5),fs=Math.sin(t*Math.PI*.5); // equal-power
     m[N-xf+i]=m[N-xf+i]*fe+m[i]*fs;
   }
+  // The equal-power seam can briefly sum two high peaks; protect only those samples.
+  for(let i=0;i<N;i++){
+    const a=Math.abs(m[i]);
+    if(a>.92)m[i]=Math.sign(m[i])*(.92+.06*Math.tanh((a-.92)/.06));
+  }
 }
 function music(){
   const seed=baseOf('mseed'),R=k=>rngM('m'+seed+k),r0=R('');NR=R('n');
   const ST=STY[v('style')]||STY[0],bpm=v('tempo'),key=v('key'),si=v('scale'),nvc=v('voices'),pit=v('mpitch'),li=v('lead');
-  // tight, steady grid for clean loops; light swing only at slower tempos
-  const pv=Math.max(.08,Math.min(.4,.5-bpm/300)),sw0=pick(r0,[0,0,.08,.14]),sw=bpm<105?(ST.sw??sw0):0;
+  // Tempo changes the playback rate and song length only. Keep note
+  // variation and each style's groove independent of BPM.
+  const pv=.18,sw0=pick(r0,[0,0,.08,.14]),sw=ST.sw??sw0;
   const sc=SCALES[SN[si]],n=sc.length;
   const A=[...Array(n).keys()].filter(d=>n<7||([3,4].includes(sc[(d+2)%n]+(d+2>=n)*12-sc[d])&&sc[(d+4)%n]+(d+4>=n)*12-sc[d]==7)),cad=[4,3,5,0].find(d=>A.includes(d%n));
   const sd=60/bpm/4;let bars=Math.max(4,Math.round(v('mlen')*bpm/480)*2);
@@ -596,16 +630,16 @@ function music(){
   const tot=T[steps],Tq=i=>i<steps?T[i]:tot+T[i-steps];
   const t=(bar,s)=>{const q=bar*16+s,i=Math.floor(q),a=Tq(i),w=Tq(i+1)-a;return a+(q-i)*w+(i&1)*sw*w};
   let kf=440*2**((48+key+pit-69)/12);while(kf>90)kf/=2;while(kf<45)kf*=2;
-  const hh=bpm>145?2:1;
-  const densMul=bpm>130?Math.min(1.45,1+(bpm-130)/180):1;
+  const hh=1;
+  const densMul=1;
   const len=Math.round(tot*MS),X={m:new Float32Array(len),d:new Float32Array(len),kk:[],st:ST,n,s:seed,t,cad,kf,hh,lastBar:bars-1,
     deg:d=>sc[(d%n+n)%n]+12*Math.floor(d/n),mf:x=>{while(x<LO)x+=12;while(x>HI)x-=12;return 440*2**((x-69)/12)},root:48+key+pit,
     rec:Math.min(.14,60/bpm*.3)*MS|0,ts:Math.min(1,Math.max(.6,sd*8)),
     pd:rx=>rx()<pv*.45?pick(rx,[-2,2,n,-n,2,-2]):0,
     dur:(bar,s,l)=>t(bar,s+l)-t(bar,s)};
   const Z={sd:seed,cnt:{},nvc,dens:ST.dn*densMul,lw:LW[li],
-    busy:(.75+R('b')()*.55)*Math.min(1.35,Math.max(.65,.55+bpm/220))*densMul,
-    hc:Math.max(5,Math.min(16,Math.round(2600/Math.max(80,bpm)*densMul))),
+    busy:.75+R('b')()*.55,
+    hc:Math.max(5,Math.min(16,Math.round(8+ST.dn*8))),
     pal:pick(R('c'),PAL),st:ST};
   const secs=makeForm(R,bars,v('sect'),A),lay=Array.from({length:nvc},(_,i)=>makeLayer(i,Z));
   // if form total bars drifted, pad/trim last section to exact bar count
@@ -628,19 +662,142 @@ function music(){
   $('#minfo').textContent=`${bpm} bpm, ${KEYS[((key+pit)%12+12)%12]} ${SN[si].toLowerCase()}, ${secs.length} parts, ${(len/MS).toFixed(1)} s`;
   return X.m;
 }
-let mData,mSrc;
+let mData,mSrc,mGen=0,mWorker=null,mWorkerURL=null,mRenderTimer=0;
+let mPlaying=false,mPendingRender=false,mDataTempo=120,mPlaybackTempo=120;
+const mActiveSources=new Set();
 function msize(){
   if(!mData)return;const[sr,bits]=QUAL[v('q')];
   $('#msave').textContent=`Download WAV, ${kb(44+Math.floor(mData.length*sr/MS)*bits/8)}`;
 }
-const mStop=()=>{stopSrc(mSrc);mSrc=null;$('#mplay').textContent='Play loop'};
-function mStart(){mStop();mSrc=play(mData,MS,true,v('mvol'));$('#mplay').textContent='Stop'}
-function musGo(go){
-  const was=!!mSrc;$('#minfo').textContent='Rendering...';
-  mStop();
-  setTimeout(()=>{mData=music();draw($('#mw'),mData);msize();if(was||go)mStart()},15);
+function makeMusicSource(data,startAt,fadeIn=.06){
+  ac=ac||new (window.AudioContext||window.webkitAudioContext)();
+  if(ac.state==='suspended')ac.resume();
+  const b=ac.createBuffer(1,data.length,MS);b.copyToChannel(data,0);
+  const s=ac.createBufferSource(),g=ac.createGain(),t=Math.max(ac.currentTime+.01,startAt??ac.currentTime);
+  s.buffer=b;s.loop=true;g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(v('mvol'),t+fadeIn);
+  s.connect(g).connect(ac.destination);
+  const src={s,g,vol:v('mvol'),startedAt:t};
+  s.onended=()=>mActiveSources.delete(src);
+  mActiveSources.add(src);s.start(t);return src;
 }
-const mDice=link('mseed',['style','mlen','voices','sect','tempo','mpitch','key','scale','lead'],['0','30','16','6','120','0','0','0','2'],musGo,false,{norm:seedNum,rnd:newSeed,roll:mRoll});
+function fadeMusicSource(src,at,duration=.08){
+  if(!src||!ac)return;
+  try{
+    const t=Math.max(ac.currentTime,at);
+    src.g.gain.cancelScheduledValues(t);
+    src.g.gain.setValueAtTime(src.g.gain.value,t);
+    src.g.gain.linearRampToValueAtTime(0,t+duration);
+    src.s.stop(t+duration+.01);
+  }catch(e){}
+}
+function mStop(){
+  mPlaying=false;
+  for(const src of [...mActiveSources])fadeMusicSource(src,ac?ac.currentTime:0,.035);
+  mSrc=null;$('#mplay').textContent='Play loop';
+}
+function mStart(){
+  if(mPendingRender){mPlaying=true;$('#mplay').textContent='Stop';return;}
+  if(!mData||!mData.length)return;
+  mPlaying=true;mPlaybackTempo=mDataTempo;
+  mSrc=makeMusicSource(mData,ac?ac.currentTime+.02:.02,.035);
+  $('#mplay').textContent='Stop';
+}
+function swapMusicPlayback(data,tempo){
+  if(!mPlaying)return;
+  const now=ac?ac.currentTime:0,old=mSrc;
+  let at=now+.025;
+  if(old&&old.startedAt<=now){
+    const beat=60/Math.max(40,mPlaybackTempo),elapsed=now-old.startedAt;
+    const nextBeat=old.startedAt+(Math.floor(elapsed/beat)+1)*beat;
+    if(nextBeat<=now+.24)at=Math.max(at,nextBeat);
+  }else if(old)at=Math.max(at,old.startedAt);
+  const next=makeMusicSource(data,at,.085);
+  for(const src of [...mActiveSources])if(src!==next)fadeMusicSource(src,at,.095);
+  mSrc=next;mPlaybackTempo=tempo||120;
+}
+function makeMusicWorkerURL(){
+  if(mWorkerURL)return mWorkerURL;
+  const script=[...document.scripts].find(x=>x.textContent.includes('/* ---------- Loop maker:'));
+  if(!script)throw new Error('Music source was not found');
+  const source=script.textContent;
+  const loopMarker=source.indexOf('/* ---------- Loop maker:');
+  const coreStart=source.indexOf('const MS=32000',loopMarker);
+  const coreEnd=source.indexOf("build($('#mctl'),[",coreStart);
+  const synthStart=source.indexOf('let NR;',coreEnd);
+  const synthEnd=source.indexOf('let mData,mSrc,mGen=0,mWorker=null',synthStart);
+  if(coreStart<0||coreEnd<0||synthStart<0||synthEnd<0)throw new Error('Music worker source could not be prepared');
+  const helpers=`
+let settings={};
+const pick=(r,a)=>a[r()*a.length|0];
+const hash=s=>{let h=1779033703^s.length;for(let i=0;i<s.length;i++){h=Math.imul(h^s.charCodeAt(i),3432918353);h=h<<13|h>>>19}h=Math.imul(h^h>>>16,2246822507);h=Math.imul(h^h>>>13,3266489909);return(h^h>>>16)>>>0};
+const W=(w,p,d,n)=>w==0?(p<d?1:-1):w==1?2*p-1:w==2?4*Math.abs(p-.5)-1:w==3?Math.sin(6.2832*p):n;
+const v=id=>Number(settings[id]??0);
+const baseOf=()=>settings.seed;
+const $=()=>({set textContent(value){postMessage({type:'status',value})}});
+`;
+  const workerCode=helpers+'\n'+source.slice(coreStart,coreEnd)+'\n'+source.slice(synthStart,synthEnd)+`
+self.onmessage=event=>{settings=event.data;try{const audio=music();postMessage({type:'done',buffer:audio.buffer},[audio.buffer])}catch(error){postMessage({type:'error',message:error&&error.message?error.message:String(error)})}};`;
+  mWorkerURL=URL.createObjectURL(new Blob([workerCode],{type:'text/javascript'}));
+  return mWorkerURL;
+}
+function musicSettings(){
+  return{seed:baseOf('mseed'),style:v('style'),mlen:v('mlen'),voices:v('voices'),sect:v('sect'),tempo:v('tempo'),mpitch:v('mpitch'),key:v('key'),scale:v('scale'),lead:v('lead')};
+}
+function acceptMusic(data,gen,settings){
+  if(gen!==mGen)return;
+  mPendingRender=false;mData=data;mDataTempo=Number(settings.tempo)||120;
+  draw($('#mw'),mData);msize();
+  if(mPlaying){
+    if(mSrc)swapMusicPlayback(mData,mDataTempo);
+    else{mPlaybackTempo=mDataTempo;mSrc=makeMusicSource(mData,ac?ac.currentTime+.02:.02,.035)}
+    $('#mplay').textContent='Stop';
+  }
+}
+function failMusicRender(gen,err,worker){
+  if(gen!==mGen)return;
+  mPendingRender=false;
+  if(worker)worker.terminate();
+  if(mWorker===worker)mWorker=null;
+  console.error(err);
+  $('#minfo').textContent='Render failed — try fewer sounds or shorter length';
+  if(mPlaying&&!mSrc&&mData){mSrc=makeMusicSource(mData,ac?ac.currentTime+.02:.02,.035);mPlaybackTempo=mDataTempo}
+  else if(mPlaying&&!mSrc){mPlaying=false;$('#mplay').textContent='Play loop'}
+}
+function musGo(){
+  const gen=++mGen,settings=musicSettings();
+  mPendingRender=true;
+  clearTimeout(mRenderTimer);
+  if(mWorker){mWorker.terminate();mWorker=null;}
+  $('#minfo').textContent=mPlaying?'Updating playback...':'Generating music...';
+  // Keep the current loop playing until the replacement is ready.
+  mRenderTimer=setTimeout(()=>{
+    if(gen!==mGen)return;
+    let worker;
+    try{
+      worker=new Worker(makeMusicWorkerURL());mWorker=worker;
+      worker.onmessage=event=>{
+        if(gen!==mGen)return;
+        const msg=event.data;
+        if(msg.type==='status'){$('#minfo').textContent=msg.value;return;}
+        if(msg.type==='error'){failMusicRender(gen,new Error(msg.message),worker);return;}
+        if(msg.type==='done'){
+          acceptMusic(new Float32Array(msg.buffer),gen,settings);
+          worker.terminate();if(mWorker===worker)mWorker=null;
+        }
+      };
+      worker.onerror=event=>failMusicRender(gen,event.error||new Error(event.message||'Music worker failed'),worker);
+      worker.postMessage(settings);
+    }catch(err){
+      console.warn('Background music rendering is unavailable; using local rendering.',err);
+      $('#minfo').textContent='Rendering locally...';
+      setTimeout(()=>{
+        if(gen!==mGen)return;
+        try{acceptMusic(music(),gen,settings)}catch(error){failMusicRender(gen,error,null)}
+      },20);
+    }
+  },65);
+}
+const mDice=link('mseed',['style','mlen','voices','sect','tempo','mpitch','key','scale','lead'],['0','30','16','6','120','0','0','0','2'],musGo,false,{norm:seedNum,rnd:newSeed,roll:mRoll,liveDelay:180});
 $('#mctl').addEventListener('input',e=>{
   if(e.target.id=='mvol'&&mSrc&&mSrc.g){
     const t=ac.currentTime;
@@ -652,7 +809,7 @@ $('#mctl').addEventListener('input',e=>{
 });
 $('#mctl').addEventListener('change',e=>{if(e.target.id=='q')msize()});
 $('#mdice').onclick=mDice;
-$('#mplay').onclick=()=>mSrc?mStop():mStart();
+$('#mplay').onclick=()=>mPlaying?mStop():mStart();
 $('#msave').onclick=()=>{const[sr,bits]=QUAL[v('q')];save(mData,[MS,sr],bits,'seedblip-loop-'+baseOf('mseed'))};
 
 sfxGo(false);musGo(false);
