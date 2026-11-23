@@ -1,6 +1,5 @@
 Generates music and sfx using seeds.
 Has some settings to play around with tempo, sounds, and pitch.
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -36,7 +35,8 @@ button:active{transform:none;filter:brightness(.94)}
 button.play{flex:1;background:var(--c);border-color:var(--c);color:#10142a;font-weight:700;font-size:16px}
 button.play:hover{filter:brightness(1.1)}
 button.dl{width:100%;margin-top:18px;border-color:var(--c);color:var(--c)}
-button.dl:hover{background:var(--c);color:#10142a}
+button.dl:hover:not(:disabled){background:var(--c);color:#10142a}
+button.dl:disabled{opacity:.45;cursor:not-allowed}
 :focus-visible{outline:3px solid var(--pink);outline-offset:2px}
 .seedbox{margin-bottom:18px}
 .seedbox>span,.lb{color:var(--dim);font-size:15px}
@@ -65,7 +65,7 @@ input[type=range]::-moz-range-thumb{width:12px;height:20px;background:var(--c);b
 <main>
 <header>
   <h1>Seed<b>blip</b></h1>
-  <p>Make pixel sound effects and music loops from a seed. Every setting is stored inside the seed, so pasting a seed brings back exactly that sound.</p>
+  <p>Make pixel sound effects and music loops from a seed. Sound-generation settings are stored in the seed, so pasting it recreates the same composition.</p>
 </header>
 <div class="grid">
   <section id="sfx">
@@ -82,7 +82,7 @@ input[type=range]::-moz-range-thumb{width:12px;height:20px;background:var(--c);b
     <div class="row"><button id="mplay" class="play">Play loop</button><button id="mdice">Random</button></div>
     <div class="seedbox"><span>Seed</span><input type="text" id="mseed" value="4829175306184" spellcheck="false" autocomplete="off" aria-label="Music seed"></div>
     <div class="ctl" id="mctl"></div>
-    <button id="msave" class="dl">Download WAV</button>
+    <button id="msave" class="dl" disabled>Download WAV</button>
   </section>
 </div>
 <footer style="margin-top:32px;padding-top:16px;border-top:2px solid var(--line);color:var(--dim);font-size:15px;text-align:center">Copyright free music that cannot be claimed, free to use commercially.</footer>
@@ -109,7 +109,7 @@ function build(el,defs){
   el.innerHTML=defs.map(d=>d.g
     ?`<div class="f w"><div class="lb"><span>${d.l}</span></div><div class="seg" data-for="${d.id}">${d.g.map((o,i)=>`<button type="button" data-v="${i}">${o}</button>`).join('')}</div><input type="hidden" id="${d.id}" value="${d.v||0}"></div>`
     :d.o
-    ?`<div class="f"><div class="lb"><span>${d.l}</span></div><select id="${d.id}">${d.o.map((o,i)=>`<option value="${i}">${o}</option>`).join('')}</select></div>`
+    ?`<div class="f"><div class="lb"><span>${d.l}</span></div><select id="${d.id}">${d.o.map((o,i)=>`<option value="${i}" ${i===(d.v??0)?'selected':''}>${o}</option>`).join('')}</select></div>`
     :`<div class="f"><div class="lb"><span>${d.l}</span><output id="${d.id}o"></output></div><input type="range" id="${d.id}" min="${d.a}" max="${d.b}" step="${d.s||1}" value="${d.v}"></div>`).join('');
   defs.forEach(d=>{if(d.f)FM[d.id]=d.f;refresh(d.id)});
   el.addEventListener('input',e=>refresh(e.target.id));
@@ -183,18 +183,35 @@ function stopSrc(src){
 }
 function resample(d,from,to){
   if(from==to)return d;
-  const r=from/to,n=Math.floor(d.length/r),o=new Float32Array(n);
-  for(let i=0;i<n;i++){const a=Math.floor(i*r),e=Math.max(a+1,Math.floor((i+1)*r));let s=0;for(let j=a;j<e;j++)s+=d[j];o[i]=s/(e-a)}
+  const r=from/to,n=Math.max(1,Math.round(d.length/r)),o=new Float32Array(n);
+  for(let i=0;i<n;i++){const a=Math.min(d.length-1,Math.floor(i*r)),e=Math.min(d.length,Math.max(a+1,Math.floor((i+1)*r)));let sum=0;for(let j=a;j<e;j++)sum+=d[j];o[i]=sum/(e-a)}
   return o;
 }
-function wav(d,sr,bits){
-  const n=d.length,by=bits/8,b=new DataView(new ArrayBuffer(44+n*by)),w=(o,s)=>[...s].forEach((c,i)=>b.setUint8(o+i,c.charCodeAt()));
-  w(0,'RIFF');b.setUint32(4,36+n*by,true);w(8,'WAVEfmt ');b.setUint32(16,16,true);b.setUint16(20,1,true);b.setUint16(22,1,true);
-  b.setUint32(24,sr,true);b.setUint32(28,sr*by,true);b.setUint16(32,by,true);b.setUint16(34,bits,true);w(36,'data');b.setUint32(40,n*by,true);
-  for(let i=0;i<n;i++){const x=Math.max(-1,Math.min(1,d[i]));bits==8?b.setUint8(44+i,Math.round(x*127+128)):b.setInt16(44+i*2,x*32767,true)}
+function wav(d,sr,bits,float32=false){
+  const n=d.length,by=bits/8,format=float32?3:1,bytes=n*by;
+  const b=new DataView(new ArrayBuffer(44+bytes)),w=(o,s)=>{for(let i=0;i<s.length;i++)b.setUint8(o+i,s.charCodeAt(i))};
+  w(0,'RIFF');b.setUint32(4,36+bytes,true);w(8,'WAVEfmt ');b.setUint32(16,16,true);
+  b.setUint16(20,format,true);b.setUint16(22,1,true);b.setUint32(24,sr,true);
+  b.setUint32(28,sr*by,true);b.setUint16(32,by,true);b.setUint16(34,bits,true);w(36,'data');b.setUint32(40,bytes,true);
+  for(let i=0;i<n;i++){
+    const x=Math.max(-1,Math.min(1,Number.isFinite(d[i])?d[i]:0)),o=44+i*by;
+    if(float32)b.setFloat32(o,x,true);
+    else if(bits===8)b.setUint8(o,Math.round(x*127+128));
+    else if(bits===16)b.setInt16(o,Math.round(x*(x<0?32768:32767)),true);
+    else if(bits===24){
+      const q=Math.round(x*(x<0?8388608:8388607));
+      b.setUint8(o,q&255);b.setUint8(o+1,(q>>8)&255);b.setUint8(o+2,(q>>16)&255);
+    }else if(bits===32)b.setInt32(o,Math.round(x*(x<0?2147483648:2147483647)),true);
+    else throw new Error('Unsupported WAV bit depth: '+bits);
+  }
   return new Blob([b],{type:'audio/wav'});
 }
-function save(d,sr,bits,name){const a=document.createElement('a');a.href=URL.createObjectURL(wav(resample(d,sr[0],sr[1]),sr[1],bits));a.download=name.replace(/[^\w-]+/g,'_')+'.wav';a.click()}
+function save(d,sr,bits,name,float32=false){
+  if(!d||!d.length)return;
+  const data=resample(d,sr[0],sr[1]),url=URL.createObjectURL(wav(data,sr[1],bits,float32));
+  const a=document.createElement('a');a.href=url;a.download=name.replace(/[^\w-]+/g,'_')+'.wav';
+  document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500);
+}
 // 0 square, 1 saw, 2 triangle, 3 sine, 4 noise
 const W=(w,p,d,n)=>w==0?(p<d?1:-1):w==1?2*p-1:w==2?4*Math.abs(p-.5)-1:w==3?Math.sin(6.2832*p):n;
 const sgn=x=>(x>0?'+':'')+x;
@@ -275,13 +292,13 @@ $('#splay').onclick=()=>sfxGo();
 $('#ssave').onclick=()=>save(sfxData,[SR,SQ[v('sq')][0]],8,'seedblip-sfx-'+baseOf('sseed'));
 
 /* ---------- Loop maker: 32 kHz mono, numeric seed, sectioned song form, seeded layers, notes wrap so the loop is seamless ---------- */
-const MS=32000,LO=40,HI=84,WC=[1,1.3,1.6,1.6,1];
+const MS=48000,LO=40,HI=84,WC=[1,1.3,1.6,1.6,1];
 const SCALES={Minor:[0,2,3,5,7,8,10],Major:[0,2,4,5,7,9,11],Dorian:[0,2,3,5,7,9,10],Phrygian:[0,1,3,5,7,8,10],Pentatonic:[0,2,4,7,9],'Minor pentatonic':[0,3,5,7,10],'Harmonic minor':[0,2,3,5,7,8,11],Mixolydian:[0,2,4,5,7,9,10],Lydian:[0,2,4,6,7,9,11]};
 const SN=Object.keys(SCALES),KEYS=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 const PROGS=[[0,5,3,4],[0,3,4,3],[0,4,5,3],[0,3,5,4],[5,3,0,4],[0,0,3,3,5,5,4,4],[5,4,3,4,5,4,0,0],[0,3,0,4]];
 const ENERGY=[.35,.6,1.05,.38,.9,.55],PT=[1,1,2,3,4,1];
 const LW=[[0,.25],[0,.125],[0,.5],[1,.5],[2,.5]];
-const QUAL=[[11025,8],[22050,8],[32000,16]];
+const QUAL=[[22050,16,false],[32000,16,false],[44100,16,false],[48000,24,false],[48000,32,true]];
 const BASSB=[[0,4,8,12],[0,3,6,8,11,14],[0,2,4,6,8,10,12,14],[0,6,8,14]];
 const KICKB=[[0,4,8,12],[0,8,10],[0,6,8,14],[0,3,8,11],[0,8],[0,2,8,10]];
 const SNAREB=[[4,12],[4,10,12],[8],[4,12,15],[2,6,12]];
@@ -350,7 +367,7 @@ build($('#mctl'),[
   {id:'key',l:'Key',o:KEYS},
   {id:'scale',l:'Scale',o:SN},
   {id:'lead',l:'Lead sound',g:['Pulse 25','Pulse 12','Square','Saw','Tri'],v:2},
-  {id:'q',l:'Download size',g:['Tiny 8-bit 11k','Small 8-bit 22k','Full 16-bit']}
+  {id:'q',l:'Export quality',o:['Compact — 22 kHz / 16-bit','Standard — 32 kHz / 16-bit','CD — 44.1 kHz / 16-bit','High — 48 kHz / 24-bit','Studio — 48 kHz / 32-bit float'],v:3}
 ]);
 // Seed -> every setting. Used by Random and when a plain seed is pasted.
 function mRoll(sd){
@@ -367,7 +384,7 @@ function mRoll(sd){
 }
 let NR;
 function note(b,t,d,f,w,vol,o={}){
-  const n=d*MS|0,L=b.length,sl=o.sl||1,du=o.du||.5,dec=o.dec??1,su=o.su||0,a=Math.max(1,(o.at||.0035)*MS),rl=Math.min(n>>1,160),ek=sl==1?1:sl**(1/n),dc=w==0?2*du-1:0;
+  const n=d*MS|0,L=b.length,sl=o.sl||1,du=o.du||.5,dec=o.dec??1,su=o.su||0,a=Math.max(1,(o.at||.0035)*MS),rl=Math.min(n>>1,Math.round(160*MS/32000)),ek=sl==1?1:sl**(1/n),dc=w==0?2*du-1:0;
   let ph=0,nv=0,fr=f/MS,j=(t*MS|0)%L;
   for(let i=0;i<n;i++){
     ph+=fr;fr*=ek;if(ph>=1){ph-=1;nv=NR()*2-1}
@@ -423,10 +440,9 @@ function makeLayer(i,Z){
   return L;
 }
 function prog(r,A){
-  if(r()<.4){const p=pick(r,PROGS);if(p.every(x=>A.includes(x)))return p.slice()}
-  const w=[0,0,3,3,4,4,5,5,2,1].filter(x=>A.includes(x)),o=[pick(r,[0,0,5].filter(x=>A.includes(x)))],l=pick(r,[4,4,4,8,8]);
-  while(o.length<l)o.push(pick(r,w));
-  if(l==8&&r()<.55)o.splice(4,4,...o.slice(0,4).map((x,i)=>i===0?x:pick(r,w)));
+  if(r()<.4){const p=pick(r,PROGS).slice(0,4);if(p.every(x=>A.includes(x)))return p}
+  const w=[0,0,3,3,4,4,5,5,2,1].filter(x=>A.includes(x)),o=[pick(r,[0,0,5].filter(x=>A.includes(x)))];
+  while(o.length<4)o.push(pick(r,w));
   // occasional late-section twist (borrowed chord)
   if(r()<.35&&A.includes(1))o[o.length-1]=1;
   else if(r()<.25&&A.includes(6%Math.max(1,A.length)))o[o.length-2]=pick(r,A);
@@ -445,7 +461,7 @@ function form(r,S){
     f.push(next);
   }
   if(S>1)f.push(start); // last section mirrors first → loop joins cleanly
-  if(!f.includes(2))f[Math.min(S-2,1+(r()*Math.max(1,S-3)|0))]=2;
+  if(S>2&&!f.includes(2))f[1+(r()*(S-2)|0)]=2;
   if(S>5&&r()<.45){const i=1+(r()*(S-3)|0);if(f[i]!=2)f[i]=2}
   return f;
 }
@@ -455,11 +471,17 @@ function makeForm(R,bars,want,A){
   const r=R('f'),S=Math.max(1,Math.min(want||4+(r()*10|0),maxS)),f=form(r,S),ns=f.map(()=>1),seen={};
   // ONE global progression that cycles — harmonic continuity across the loop seam
   const gProg=prog(r,A),altProg=prog(r,A);
-  // distribute remaining bar-pairs without exceeding budget
+  // Keep the opening and closing sections the same length. Extra bars go
+  // into the middle sections so the loop returns to its opening phrase cleanly.
   let pairs=Math.max(0,(bars>>1)-S);
-  for(let u=pairs;u>0;u--)ns[pick(r,f.flatMap((t,k)=>t==2?[k,k,k,k]:t==4||t==3?[k,k]:[k]))]++;
-  // force first & last section same length so loop phase matches
-  if(S>1){const share=Math.max(1,Math.min(ns[0],ns[S-1]));ns[0]=ns[S-1]=share}
+  if(S===1){
+    ns[0]=bars>>1;
+  }else if(S===2){
+    for(let u=0;u<pairs;u+=2){ns[0]++;ns[1]++}
+  }else{
+    const middle=f.flatMap((t,k)=>k===0||k===S-1?[]:t===2?[k,k,k,k]:t===4||t===3?[k,k]:[k]);
+    for(let u=0;u<pairs;u++)ns[pick(r,middle)]++;
+  }
   // scale down if we still overshoot
   let total=ns.reduce((a,x)=>a+x,0);
   while(total*2>bars&&total>S){
@@ -486,6 +508,8 @@ function makeForm(R,bars,want,A){
     secs[secs.length-1].tr=secs[0].tr;
     secs[secs.length-1].mi=secs[0].mi;
     secs[secs.length-1].pr=secs[0].pr;
+    secs[secs.length-1].o=secs[0].o;
+    secs[secs.length-1].mirror=true;
   }
   return secs;
 }
@@ -496,31 +520,52 @@ function pickPat(L,c,bi,bar){
   if(ph^(c.o&1))return L.pb;
   return L.pa;
 }
+function loopBarFor(X,c,bar){
+  if(c.mirror)return bar-c.b0;
+  if(X.singleSection&&bar>=X.lastBar-3)return bar-(X.lastBar-3);
+  return bar;
+}
+function evolvePattern(X,L,bar,pattern){
+  if(!pattern||!pattern.length||L.k===8)return pattern;
+  const r=rngM(X.s+'V'+L.i+'P'+(bar>>2)),out=pattern.slice();
+  const chance=L.pc ? .22 : .48;
+  if(r()<chance)return MUTATE(out,r);
+  if(!L.pc&&L.pm===2&&r()<.16){
+    const step=pick(r,[2,6,10,14]);
+    if(!out.includes(step)){out.push(step);out.sort((a,b)=>a-b)}
+  }
+  return out;
+}
 function pitched(X,L,c,bi,bar){
   const{n,deg,mf}=X;
-  // global progression phase from absolute bar — continuous across loop
-  const prLen=c.pr.length,cs=c.pr[(bar/X.hh|0)%prLen];
-  // seed by absolute bar phrase (not section index) so end→start is continuous
-  const phrase=bar>>2,rg=rngM(X.s+'L'+L.i+'p'+phrase+'b'+(bar&3)),tr=X.root+c.tr+L.oc,o={du:L.du,dec:L.dc,at:L.at,su:L.su};
+  // The final section mirrors the opening section's musical phase, so the
+  // composition can vary internally and still return naturally at the seam.
+  const loopBar=loopBarFor(X,c,bar);
+  const prLen=c.pr.length,cs=c.pr[(loopBar/X.hh|0)%prLen];
+  const phrase=loopBar>>2,rg=rngM(X.s+'L'+L.i+'p'+phrase+'b'+(loopBar&3)),tr=X.root+c.tr+L.oc,o={du:L.du,dec:L.dc,at:L.at,su:L.su};
   if(L.pm==3){
     const tones=rg()<.2?[0,2]:rg()<.15?[0,4]:[0,2,4];
     for(const k of tones)note(X.m,X.t(bar,0),X.dur(bar,0,16)*1.02,mf(tr+deg(cs+k))*L.dt,L.w,L.g*(tones.length<3?1.08:1),o);
     return;
   }
-  const hs=pickPat(L,c,bi,bar),near=x=>[-n,0,n].flatMap(q=>[cs+q,cs+q+2,cs+q+4]).reduce((a,y)=>Math.abs(y-x)<Math.abs(a-x)?y:a);
+  const hs=evolvePattern(X,L,loopBar,pickPat(L,c,bi,loopBar)),near=x=>[-n,0,n].flatMap(q=>[cs+q,cs+q+2,cs+q+4]).reduce((a,y)=>Math.abs(y-x)<Math.abs(a-x)?y:a);
   let cur=near(n*.8);
   const chordOnly=L.i>14;
-  const ao=(bar&2)?L.ao2:L.ao;
-  const sp=(bar&4)?L.sp2:L.sp;
-  const contour=((bar&7)<4)?1:-.5;
+  const ao=(loopBar&2)?L.ao2:L.ao;
+  const sp=(loopBar&4)?L.sp2:L.sp;
+  const contour=((loopBar&7)<4)?1:-.5;
   hs.forEach((s,k)=>{
     let ln=L.ln;
     if(!chordOnly&&rg()<.1)ln=Math.max(1,ln+(rg()<.5?1:-1));
-    const dd=X.dur(bar,s,Math.min(ln,(hs[k+1]??hs[0]+16)-s)),vo=L.g*(s&3?.88:1)*(s===0?1.05:.95);
+    const dd0=X.dur(bar,s,Math.min(ln,(hs[k+1]??hs[0]+16)-s));
+    const human=rngM(X.s+'H'+L.i+'B'+loopBar+'S'+s),stepDur=Math.max(.001,X.t(bar,s+1)-X.t(bar,s));
+    const jitter=(human()-.5)*Math.min(.007,stepDur*.045),gate=.92+human()*.08;
+    const accent=(s%4===0?1.07:s%4===2?1.01:.91)*(.94+human()*.12);
+    const dd=dd0*gate,vo=L.g*(s&3?.88:1)*(s===0?1.05:.95)*accent,eventTime=Math.max(0,X.t(bar,s)+jitter);
     let dg=cs;
-    if(L.pm==1)dg=[cs,cs+2,cs+4,cs+n,cs+n+2][ao[(bar*16+s)%ao.length]];
+    if(L.pm==1)dg=[cs,cs+2,cs+4,cs+n,cs+n+2][ao[(loopBar*16+s)%ao.length]];
     else if(L.pm==2){
-      if(chordOnly){dg=[cs,cs+2,cs+4][(s+bar)%3];}
+      if(chordOnly){dg=[cs,cs+2,cs+4][(s+loopBar)%3];}
       else{
         if(!(s&3)&&rg()<.5)cur=near(cur+contour);
         else cur+=pick(rg,sp);
@@ -529,7 +574,7 @@ function pitched(X,L,c,bi,bar){
       }
     }
     const jd=chordOnly?0:X.pd(rg),p=tr;
-    for(const q of L.pm==4?[0,2,4]:[0])note(X.m,X.t(bar,s),dd,mf(p+deg(dg+jd+q))*L.dt,L.w,vo,o);
+    for(const q of L.pm==4?[0,2,4]:[0])note(X.m,eventTime,dd,mf(p+deg(dg+jd+q))*L.dt,L.w,vo,o);
   });
 }
 function perc(X,L,c,bi,bar){
@@ -538,16 +583,18 @@ function perc(X,L,c,bi,bar){
   const isSongEnd=X.lastBar!=null&&bar===X.lastBar;
   const fill=!isSongEnd&&c.n>1&&bi==c.n-1;
   const halfFill=!isSongEnd&&c.n>2&&bi===(c.n>>1)-1&&(c.t===2||c.t===4);
+  const loopBar=loopBarFor(X,c,bar);
   const nt=(s,d,f,w,g,o)=>note(X.d,X.t(bar,s),d*X.ts,f,w,g,o);
   let hs;
   if(fill&&k==9)hs=[12,13,14,15];
   else if(fill&&k>9)hs=FILL;
-  else if(halfFill&&k>=8)hs=MUTATE(pickPat(L,c,bi,bar),()=>((bar*7+k*3)%10)/10);
-  else hs=pickPat(L,c,bi,bar);
-  // pattern breathing by absolute bar — same phase every loop
-  if(!fill&&k>=8&&(bar&3)===2){
+  else if(halfFill&&k>=8)hs=MUTATE(pickPat(L,c,bi,loopBar),()=>((loopBar*7+k*3)%10)/10);
+  else hs=pickPat(L,c,bi,loopBar);
+  hs=evolvePattern(X,L,loopBar,hs);
+  // pattern breathing by phrase — deterministic variation, repeated at the loop seam
+  if(!fill&&k>=8&&(loopBar&3)===2){
     hs=hs.slice();
-    if(hs.length>2&&(bar+k)&1)hs.pop();
+    if(hs.length>2&&(loopBar+k)&1)hs.pop();
     else if(!hs.includes(6))hs.push(6),hs.sort((a,b)=>a-b);
   }
   if(k==10&&bi==0&&L.cr&&c.e>=.75)nt(0,.65,6200,4,L.g*1.35,{dec:1});
@@ -567,9 +614,9 @@ function band(m,fc){
 // Small wrap-around reverb (8 combs + 4 allpasses): the tail wraps so the loop stays seamless
 function reverb(m,wet,fb){
   if(!wet)return;
-  const N=m.length,cb=[810,862,927,984,1032,1082,1130,1173].map(n=>new Float32Array(n)),ab=[403,320,247,163].map(n=>new Float32Array(n)),cf=new Float32Array(8),cp=new Int32Array(8),ap=new Int32Array(4);
-  // short pre-roll (~2x max delay) — old 96k pre-roll froze the UI on long tracks
-  const pre=2400;
+  const N=m.length,scale=MS/32000,cb=[810,862,927,984,1032,1082,1130,1173].map(n=>new Float32Array(Math.round(n*scale))),ab=[403,320,247,163].map(n=>new Float32Array(Math.round(n*scale))),cf=new Float32Array(8),cp=new Int32Array(8),ap=new Int32Array(4);
+  // Preserve the original delay times at the higher native render rate.
+  const pre=Math.round(2400*scale);
   for(let i=-pre;i<N;i++){
     const x=m[(i+N)%N]*.04;let y=0;
     for(let k=0;k<8;k++){const b=cb[k],p=cp[k],o=b[p];cf[k]=o*.65+cf[k]*.35;b[p]=x+cf[k]*fb;cp[k]=p+1==b.length?0:p+1;y+=o}
@@ -598,15 +645,17 @@ function finish(X,nvc){
     if(a>.78)x=Math.sign(x)*(.78+.22*Math.tanh((a-.78)/.22));
     m[i]=x;
   }
-  // seamless loop seam: remove DC, equal-power crossfade end→start
+  // Make the loop boundary click-safe without changing the bar length or tempo.
   let mean=0;for(let i=0;i<N;i++)mean+=m[i];mean/=N;
   for(let i=0;i<N;i++)m[i]-=mean;
-  const xf=Math.min(N>>3,Math.round(.045*MS)); // ~45ms
+  const xf=Math.min(N>>3,Math.round(.012*MS)); // 12ms edge fades
   for(let i=0;i<xf;i++){
-    const t=(i+.5)/xf,fe=Math.cos(t*Math.PI*.5),fs=Math.sin(t*Math.PI*.5); // equal-power
-    m[N-xf+i]=m[N-xf+i]*fe+m[i]*fs;
+    const t=(i+.5)/xf,fadeIn=Math.sin(t*Math.PI*.5),fadeOut=Math.cos(t*Math.PI*.5);
+    m[i]*=fadeIn;
+    m[N-xf+i]*=fadeOut;
   }
-  // The equal-power seam can briefly sum two high peaks; protect only those samples.
+  m[0]=0;m[N-1]=0;
+  // Keep a final safety ceiling after edge fades.
   for(let i=0;i<N;i++){
     const a=Math.abs(m[i]);
     if(a>.92)m[i]=Math.sign(m[i])*(.92+.06*Math.tanh((a-.92)/.06));
@@ -642,6 +691,7 @@ function music(){
     hc:Math.max(5,Math.min(16,Math.round(8+ST.dn*8))),
     pal:pick(R('c'),PAL),st:ST};
   const secs=makeForm(R,bars,v('sect'),A),lay=Array.from({length:nvc},(_,i)=>makeLayer(i,Z));
+  X.singleSection=secs.length===1;
   // if form total bars drifted, pad/trim last section to exact bar count
   let used=secs.reduce((a,c)=>a+c.n,0);
   if(used!==bars&&secs.length){
@@ -666,8 +716,11 @@ let mData,mSrc,mGen=0,mWorker=null,mWorkerURL=null,mRenderTimer=0;
 let mPlaying=false,mPendingRender=false,mDataTempo=120,mPlaybackTempo=120;
 const mActiveSources=new Set();
 function msize(){
-  if(!mData)return;const[sr,bits]=QUAL[v('q')];
-  $('#msave').textContent=`Download WAV, ${kb(44+Math.floor(mData.length*sr/MS)*bits/8)}`;
+  const button=$('#msave');
+  if(!mData){button.disabled=true;button.textContent='Download WAV';return}
+  const[sr,bits,float32]=QUAL[v('q')],bytes=44+Math.round(mData.length*sr/MS)*(bits/8);
+  button.disabled=false;
+  button.textContent=`Download WAV · ${kb(bytes)} · ${sr/1000} kHz / ${float32?'32-bit float':bits+'-bit'}`;
 }
 function makeMusicSource(data,startAt,fadeIn=.06){
   ac=ac||new (window.AudioContext||window.webkitAudioContext)();
@@ -721,7 +774,7 @@ function makeMusicWorkerURL(){
   if(!script)throw new Error('Music source was not found');
   const source=script.textContent;
   const loopMarker=source.indexOf('/* ---------- Loop maker:');
-  const coreStart=source.indexOf('const MS=32000',loopMarker);
+  const coreStart=source.indexOf('const MS=48000',loopMarker);
   const coreEnd=source.indexOf("build($('#mctl'),[",coreStart);
   const synthStart=source.indexOf('let NR;',coreEnd);
   const synthEnd=source.indexOf('let mData,mSrc,mGen=0,mWorker=null',synthStart);
@@ -810,7 +863,7 @@ $('#mctl').addEventListener('input',e=>{
 $('#mctl').addEventListener('change',e=>{if(e.target.id=='q')msize()});
 $('#mdice').onclick=mDice;
 $('#mplay').onclick=()=>mPlaying?mStop():mStart();
-$('#msave').onclick=()=>{const[sr,bits]=QUAL[v('q')];save(mData,[MS,sr],bits,'seedblip-loop-'+baseOf('mseed'))};
+$('#msave').onclick=()=>{const[sr,bits,float32]=QUAL[v('q')];save(mData,[MS,sr],bits,'seedblip-loop-'+baseOf('mseed'),float32)};
 
 sfxGo(false);musGo(false);
 </script>
