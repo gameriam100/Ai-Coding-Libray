@@ -1,5 +1,5 @@
-Generates music and sfx using seeds.
-Has some settings to play around with tempo, sounds, and pitch.
+#Generates music and sfx using seeds.
+#Has some settings to play around with tempo, sounds, and pitch.
 <!DOCTYPE html>
 <html lang="en">
 <head>
