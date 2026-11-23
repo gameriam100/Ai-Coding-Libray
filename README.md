@@ -10,3 +10,5 @@ Features.
 Apps.
 
 Turn these files into html files for them to run
+
+Creative commons license: Feel free to use these applications for anything
